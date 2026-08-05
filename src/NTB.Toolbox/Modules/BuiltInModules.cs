@@ -10,6 +10,7 @@ internal static class BuiltInModules
         new FisiHandbookModule(),
         new SummaryModule(),
         new TaskDocumentationModule(),
+        new DocumentationWorkflowModule(),
         new KnowledgeBaseModule(),
         new TicketGeneratorModule(),
         new TextModule("system-info", "Systeminformationen", "System", "Übersicht über Windows, Hardware, Laufwerke und Laufzeit.", ["computer", "hardware", "windows", "laufwerke"], false, () => Task.FromResult(SystemInfoService.CreateReport())),
