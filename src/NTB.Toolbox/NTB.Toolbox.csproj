@@ -12,4 +12,7 @@
     <Company>Netz, Technik, Büro GbR</Company>
     <Product>NTB Toolbox</Product>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
 </Project>
