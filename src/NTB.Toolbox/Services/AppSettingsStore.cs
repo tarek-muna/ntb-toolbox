@@ -5,6 +5,7 @@ namespace NTB.Toolbox.Services;
 internal sealed class AppSettings
 {
     public HashSet<string> FavoriteModuleIds { get; set; } = [];
+    public AppTheme Theme { get; set; } = AppTheme.Light;
 }
 
 internal static class AppSettingsStore
