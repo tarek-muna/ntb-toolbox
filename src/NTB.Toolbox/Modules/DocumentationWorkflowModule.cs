@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using NTB.Toolbox.Services;
 
@@ -5,6 +7,9 @@ namespace NTB.Toolbox.Modules;
 
 internal sealed class DocumentationWorkflowModule : IToolboxModule
 {
+    private static readonly object KnowledgeLock = new();
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("NTB.Toolbox.WorkflowKnowledge.v1");
+
     public string Id => "documentation-workflow";
     public string Title => "Dokumentations-Workflow";
     public string Category => "Dokumentation";
@@ -42,18 +47,36 @@ internal sealed class DocumentationWorkflowModule : IToolboxModule
         };
         saveKnowledge.Click += (_, _) =>
         {
-            var content = BuildDocumentation(ticket.Text, customer.Text, subject.Text, problem.Text, analysis.Text, actions.Text, result.Text);
-            SaveKnowledge(subject.Text, tags.Text, content);
-            output.Text = content;
-            MessageBox.Show("Der Eintrag wurde lokal in der Workflow-Wissensablage gespeichert.", "Gespeichert", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            AppLog.Write("Dokumentation in lokaler Wissensablage gespeichert.");
+            try
+            {
+                var content = BuildDocumentation(ticket.Text, customer.Text, subject.Text, problem.Text, analysis.Text, actions.Text, result.Text);
+                SaveKnowledge(subject.Text, tags.Text, content);
+                output.Text = content;
+                MessageBox.Show("Der Eintrag wurde verschlüsselt in der lokalen Wissensablage gespeichert.", "Gespeichert", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                AppLog.Write("Dokumentation verschlüsselt in lokaler Wissensablage gespeichert.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Der Eintrag konnte nicht gespeichert werden.\r\n\r\n{ex.Message}", "Speicherfehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                AppLog.Write($"Fehler beim Speichern der Wissensablage: {ex.Message}");
+            }
         };
         copy.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(output.Text)) Clipboard.SetText(output.Text); };
         export.Click += (_, _) =>
         {
             if (string.IsNullOrWhiteSpace(output.Text)) return;
             using var dialog = new SaveFileDialog { Filter = "Markdown (*.md)|*.md|Textdatei (*.txt)|*.txt", FileName = $"dokumentation-{DateTime.Now:yyyyMMdd-HHmm}.md" };
-            if (dialog.ShowDialog() == DialogResult.OK) File.WriteAllText(dialog.FileName, output.Text);
+            if (dialog.ShowDialog() != DialogResult.OK) return;
+
+            try
+            {
+                File.WriteAllText(dialog.FileName, output.Text, Encoding.UTF8);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                MessageBox.Show($"Die Datei konnte nicht exportiert werden.\r\n\r\n{ex.Message}", "Exportfehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                AppLog.Write($"Fehler beim Dokumentationsexport: {ex.Message}");
+            }
         };
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42 };
@@ -97,22 +120,78 @@ internal sealed class DocumentationWorkflowModule : IToolboxModule
 
     private static void SaveKnowledge(string title, string tags, string content)
     {
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NTB Toolbox");
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "workflow-knowledge.json");
-        List<WorkflowKnowledgeEntry> entries;
+        lock (KnowledgeLock)
+        {
+            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NTB Toolbox");
+            Directory.CreateDirectory(directory);
+
+            var encryptedPath = Path.Combine(directory, "workflow-knowledge.dat");
+            var legacyPath = Path.Combine(directory, "workflow-knowledge.json");
+            var entries = LoadEntries(encryptedPath, legacyPath);
+            entries.Add(new WorkflowKnowledgeEntry(Guid.NewGuid(), string.IsNullOrWhiteSpace(title) ? "Dokumentation" : title, tags, content, DateTime.Now));
+
+            var json = JsonSerializer.Serialize(entries, new JsonSerializerOptions { WriteIndented = true });
+            var encrypted = ProtectedData.Protect(Encoding.UTF8.GetBytes(json), Entropy, DataProtectionScope.CurrentUser);
+            WriteAtomically(encryptedPath, encrypted);
+        }
+    }
+
+    private static List<WorkflowKnowledgeEntry> LoadEntries(string encryptedPath, string legacyPath)
+    {
+        if (File.Exists(encryptedPath))
+        {
+            try
+            {
+                var encrypted = File.ReadAllBytes(encryptedPath);
+                var json = Encoding.UTF8.GetString(ProtectedData.Unprotect(encrypted, Entropy, DataProtectionScope.CurrentUser));
+                return JsonSerializer.Deserialize<List<WorkflowKnowledgeEntry>>(json) ?? [];
+            }
+            catch (Exception ex) when (ex is CryptographicException or JsonException or IOException)
+            {
+                CreateTimestampedBackup(encryptedPath, "corrupt");
+                throw new InvalidDataException("Die verschlüsselte Wissensablage ist beschädigt oder gehört zu einem anderen Windows-Benutzer. Eine Sicherung wurde angelegt.", ex);
+            }
+        }
+
+        if (!File.Exists(legacyPath)) return [];
+
         try
         {
-            entries = File.Exists(path)
-                ? JsonSerializer.Deserialize<List<WorkflowKnowledgeEntry>>(File.ReadAllText(path)) ?? []
-                : [];
+            var entries = JsonSerializer.Deserialize<List<WorkflowKnowledgeEntry>>(File.ReadAllText(legacyPath, Encoding.UTF8)) ?? [];
+            CreateTimestampedBackup(legacyPath, "legacy");
+            return entries;
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or IOException)
         {
-            entries = [];
+            CreateTimestampedBackup(legacyPath, "corrupt");
+            throw new InvalidDataException("Die bisherige Wissensdatei ist beschädigt. Sie wurde nicht überschrieben; eine Sicherung wurde angelegt.", ex);
         }
-        entries.Add(new WorkflowKnowledgeEntry(Guid.NewGuid(), string.IsNullOrWhiteSpace(title) ? "Dokumentation" : title, tags, content, DateTime.Now));
-        File.WriteAllText(path, JsonSerializer.Serialize(entries, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static void WriteAtomically(string path, byte[] content)
+    {
+        var temporaryPath = path + ".tmp";
+        var backupPath = path + ".bak";
+        File.WriteAllBytes(temporaryPath, content);
+
+        try
+        {
+            if (File.Exists(path))
+                File.Replace(temporaryPath, path, backupPath, ignoreMetadataErrors: true);
+            else
+                File.Move(temporaryPath, path);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+    }
+
+    private static void CreateTimestampedBackup(string path, string suffix)
+    {
+        if (!File.Exists(path)) return;
+        var backup = $"{path}.{suffix}-{DateTime.Now:yyyyMMdd-HHmmss}.bak";
+        File.Copy(path, backup, overwrite: false);
     }
 
     private sealed record WorkflowKnowledgeEntry(Guid Id, string Title, string Tags, string Content, DateTime CreatedAt);
