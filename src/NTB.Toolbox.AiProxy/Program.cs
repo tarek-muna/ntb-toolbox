@@ -1,9 +1,14 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var gatewayToken = Environment.GetEnvironmentVariable("NTB_AI_TOKEN");
+if (string.IsNullOrWhiteSpace(gatewayToken))
+    throw new InvalidOperationException("NTB_AI_TOKEN muss gesetzt sein. Der KI-Proxy startet aus Sicherheitsgründen nicht ohne Zugriffstoken.");
 
 builder.Services.AddHttpClient("openai", client =>
 {
@@ -33,13 +38,10 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.MapPost("/v1/ask", async (HttpContext context, AskRequest request, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
-    var gatewayToken = Environment.GetEnvironmentVariable("NTB_AI_TOKEN");
-    if (!string.IsNullOrWhiteSpace(gatewayToken))
-    {
-        var authorization = context.Request.Headers.Authorization.ToString();
-        if (!authorization.Equals($"Bearer {gatewayToken}", StringComparison.Ordinal))
-            return Results.Unauthorized();
-    }
+    var authorization = context.Request.Headers.Authorization.ToString();
+    var expectedAuthorization = $"Bearer {gatewayToken}";
+    if (!FixedTimeEquals(authorization, expectedAuthorization))
+        return Results.Unauthorized();
 
     var question = request.Question?.Trim();
     if (string.IsNullOrWhiteSpace(question))
@@ -71,7 +73,7 @@ app.MapPost("/v1/ask", async (HttpContext context, AskRequest request, IHttpClie
 
     if (!response.IsSuccessStatusCode)
     {
-        app.Logger.LogWarning("OpenAI request failed with status {StatusCode}: {Body}", (int)response.StatusCode, json);
+        app.Logger.LogWarning("OpenAI request failed with status {StatusCode}.", (int)response.StatusCode);
         return Results.Problem("Der KI-Dienst konnte die Anfrage nicht beantworten.", statusCode: 502);
     }
 
@@ -84,6 +86,13 @@ app.MapPost("/v1/ask", async (HttpContext context, AskRequest request, IHttpClie
 });
 
 app.Run();
+
+static bool FixedTimeEquals(string actual, string expected)
+{
+    var actualBytes = Encoding.UTF8.GetBytes(actual);
+    var expectedBytes = Encoding.UTF8.GetBytes(expected);
+    return actualBytes.Length == expectedBytes.Length && CryptographicOperations.FixedTimeEquals(actualBytes, expectedBytes);
+}
 
 static string ExtractOutputText(JsonElement root)
 {
@@ -100,9 +109,7 @@ static string ExtractOutputText(JsonElement root)
         {
             if (entry.TryGetProperty("type", out var type) && type.GetString() == "output_text" &&
                 entry.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String)
-            {
                 parts.Add(text.GetString()!);
-            }
         }
     }
 
