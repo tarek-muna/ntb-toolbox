@@ -9,6 +9,11 @@ internal static class BuiltInModules
     [
         new TextModule("system-info", "Systeminformationen", "System", "Übersicht über Windows, Hardware, Laufwerke und Laufzeit.", ["computer", "hardware", "windows", "laufwerke"], false, () => Task.FromResult(SystemInfoService.CreateReport())),
         new TextModule("network-diagnostics", "Netzwerkdiagnose", "Netzwerk", "IP-Konfiguration, DNS und Erreichbarkeit prüfen.", ["ipconfig", "dns", "ping", "gateway"], false, NetworkDiagnosticsService.RunAsync),
+        new NetworkInputModule("ping", "Ping", "Sendet mehrere ICMP-Anfragen und berechnet Laufzeitstatistiken.", ["icmp", "latenz", "erreichbarkeit"], "Host oder IP-Adresse", NetworkToolService.PingAsync),
+        new NetworkInputModule("traceroute", "Traceroute", "Ermittelt die Netzwerkstationen bis zum Zielsystem.", ["route", "hops", "ttl", "tracert"], "Host oder IP-Adresse", NetworkToolService.TraceRouteAsync),
+        new NetworkInputModule("dns-lookup", "DNS-Lookup", "Löst Hostnamen und IP-Adressen über DNS auf.", ["dns", "hostname", "adresse", "auflösung"], "Hostname oder IP-Adresse", NetworkToolService.DnsLookupAsync),
+        new TcpPortModule(),
+        new WakeOnLanModule(),
         new TextModule("winget-list", "Winget Updates", "Software", "Verfügbare Paketaktualisierungen mit Winget anzeigen.", ["apps", "pakete", "updates", "winget"], false, async () => Format(await WingetService.ListUpgradesAsync())),
         new TextModule("winget-upgrade", "Alle Apps aktualisieren", "Software", "Alle verfügbaren Winget-Pakete aktualisieren.", ["apps", "upgrade", "winget"], true, async () => Format(await WingetService.UpgradeAllAsync())),
         new TextModule("sfc", "Systemdateien prüfen", "Windows-Reparatur", "Windows-Systemdateien mit SFC prüfen und reparieren.", ["sfc", "reparatur", "systemdateien"], true, async () => Format(await CommandRunner.RunAsync("sfc.exe", "/scannow"))),
