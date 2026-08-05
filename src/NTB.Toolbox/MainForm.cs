@@ -17,19 +17,19 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "NTB Toolbox 0.3.0-dev";
+        Text = "NTB Toolbox 0.4.0-dev";
         Width = 1120;
         Height = 720;
         MinimumSize = new Size(900, 580);
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9F);
-        BackColor = Color.FromArgb(242, 245, 249);
 
         BuildShell();
         _search.TextChanged += (_, _) => RefreshNavigation();
         _favorite.Click += (_, _) => ToggleFavorite();
         RefreshNavigation();
         OpenModule(_moduleHost.All.First());
+        ApplyTheme();
         AppLog.Write("NTB Toolbox gestartet.");
     }
 
@@ -39,20 +39,24 @@ internal sealed class MainForm : Form
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 270));
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(28, 42, 59), Padding = new Padding(14) };
-        var sidebarLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1 };
+        var sidebar = new Panel { Name = "Sidebar", Dock = DockStyle.Fill, BackColor = Color.FromArgb(28, 42, 59), Padding = new Padding(14), Tag = "sidebar" };
+        var sidebarLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 5, ColumnCount = 1, Tag = "sidebar" };
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        sidebarLayout.Controls.Add(new Label { Text = "NTB Toolbox\nWerkzeuge für Technik & Büro", Dock = DockStyle.Fill, ForeColor = Color.White, Font = new Font("Segoe UI", 12, FontStyle.Bold) }, 0, 0);
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        sidebarLayout.Controls.Add(new Label { Text = "NTB Toolbox\nWerkzeuge für Technik & Büro", Dock = DockStyle.Fill, ForeColor = Color.White, Font = new Font("Segoe UI", 12, FontStyle.Bold), Tag = "sidebar" }, 0, 0);
         sidebarLayout.Controls.Add(_search, 0, 1);
         sidebarLayout.Controls.Add(_navigation, 0, 2);
 
-        var logButton = new Button { Text = "Protokoll anzeigen", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(39, 57, 78), ForeColor = Color.White };
-        logButton.FlatAppearance.BorderSize = 0;
+        var logButton = SidebarButton("Protokoll anzeigen");
         logButton.Click += (_, _) => ShowLog();
         sidebarLayout.Controls.Add(logButton, 0, 3);
+
+        var themeButton = SidebarButton("Hell/Dunkel umschalten");
+        themeButton.Click += (_, _) => ToggleTheme();
+        sidebarLayout.Controls.Add(themeButton, 0, 4);
         sidebar.Controls.Add(sidebarLayout);
 
         var main = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Padding = new Padding(22) };
@@ -74,6 +78,13 @@ internal sealed class MainForm : Form
         shell.Controls.Add(sidebar, 0, 0);
         shell.Controls.Add(main, 1, 0);
         Controls.Add(shell);
+    }
+
+    private static Button SidebarButton(string text)
+    {
+        var button = new Button { Text = text, Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(39, 57, 78), ForeColor = Color.White, Tag = "sidebar" };
+        button.FlatAppearance.BorderSize = 0;
+        return button;
     }
 
     private void RefreshNavigation()
@@ -98,6 +109,8 @@ internal sealed class MainForm : Form
                 {
                     Text = currentCategory.ToUpperInvariant(),
                     ForeColor = Color.FromArgb(145, 164, 188),
+                    BackColor = Color.FromArgb(28, 42, 59),
+                    Tag = "sidebar",
                     AutoSize = false,
                     Width = 225,
                     Height = 28,
@@ -106,20 +119,14 @@ internal sealed class MainForm : Form
                 });
             }
 
-            var button = new Button
-            {
-                Text = $"{(_settings.FavoriteModuleIds.Contains(module.Id) ? "★ " : string.Empty)}{module.Title}{(module.RequiresAdministrator ? "  [Admin]" : string.Empty)}",
-                Width = 225,
-                Height = 38,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(39, 57, 78),
-                ForeColor = Color.White,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(8, 0, 0, 0),
-                Margin = new Padding(0, 2, 0, 2),
-                Cursor = Cursors.Hand
-            };
-            button.FlatAppearance.BorderSize = 0;
+            var button = SidebarButton($"{(_settings.FavoriteModuleIds.Contains(module.Id) ? "★ " : string.Empty)}{module.Title}{(module.RequiresAdministrator ? "  [Admin]" : string.Empty)}");
+            button.Width = 225;
+            button.Height = 38;
+            button.Dock = DockStyle.None;
+            button.TextAlign = ContentAlignment.MiddleLeft;
+            button.Padding = new Padding(8, 0, 0, 0);
+            button.Margin = new Padding(0, 2, 0, 2);
+            button.Cursor = Cursors.Hand;
             button.Click += (_, _) => OpenModule(module);
             _navigation.Controls.Add(button);
         }
@@ -132,12 +139,13 @@ internal sealed class MainForm : Form
         _heading.Text = module.Title;
         var adminText = module.RequiresAdministrator ? " · Administratorrechte erforderlich" : string.Empty;
         _description.Text = $"{module.Category} · {module.Description}{adminText}";
-        _description.ForeColor = module.RequiresAdministrator ? Color.DarkOrange : Color.DimGray;
+        _description.ForeColor = module.RequiresAdministrator ? Color.DarkOrange : (_settings.Theme == AppTheme.Dark ? Color.Silver : Color.DimGray);
         UpdateFavoriteButton();
         _content.Controls.Clear();
         var view = module.CreateView();
         view.Dock = DockStyle.Fill;
         _content.Controls.Add(view);
+        ThemeService.Apply(view, _settings.Theme);
         AppLog.Write($"Modul geöffnet: {module.Title}");
     }
 
@@ -158,10 +166,33 @@ internal sealed class MainForm : Form
         _favorite.AccessibleName = isFavorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
     }
 
+    private void ToggleTheme()
+    {
+        _settings.Theme = _settings.Theme == AppTheme.Dark ? AppTheme.Light : AppTheme.Dark;
+        AppSettingsStore.Save(_settings);
+        ApplyTheme();
+        if (_currentModule is not null) OpenModule(_currentModule);
+        AppLog.Write($"Theme geändert: {_settings.Theme}");
+    }
+
+    private void ApplyTheme()
+    {
+        BackColor = _settings.Theme == AppTheme.Dark ? Color.FromArgb(30, 33, 38) : Color.FromArgb(242, 245, 249);
+        ThemeService.Apply(this, _settings.Theme);
+        foreach (Control control in Controls.Find("Sidebar", true))
+        {
+            control.BackColor = Color.FromArgb(28, 42, 59);
+            control.ForeColor = Color.White;
+        }
+        RefreshNavigation();
+    }
+
     private void ShowLog()
     {
         using var form = new Form { Text = "NTB Toolbox Protokoll", Width = 850, Height = 520, StartPosition = FormStartPosition.CenterParent };
         var output = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, Dock = DockStyle.Fill, Font = new Font("Consolas", 9), Text = string.Join(Environment.NewLine, AppLog.Entries) };
+        var export = new Button { Text = "Protokoll exportieren", Dock = DockStyle.Bottom, Height = 40 };
+        export.Click += (_, _) => ExportLog();
         void Append(string line)
         {
             if (!output.IsDisposed && output.IsHandleCreated)
@@ -170,6 +201,21 @@ internal sealed class MainForm : Form
         AppLog.EntryAdded += Append;
         form.FormClosed += (_, _) => AppLog.EntryAdded -= Append;
         form.Controls.Add(output);
+        form.Controls.Add(export);
+        ThemeService.Apply(form, _settings.Theme);
         form.ShowDialog(this);
+    }
+
+    private void ExportLog()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Protokoll exportieren",
+            Filter = "Textdatei (*.txt)|*.txt|Alle Dateien (*.*)|*.*",
+            FileName = $"ntb-toolbox-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        File.WriteAllLines(dialog.FileName, AppLog.Entries);
+        AppLog.Write($"Protokoll exportiert: {dialog.FileName}");
     }
 }
