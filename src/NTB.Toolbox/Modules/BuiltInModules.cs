@@ -8,7 +8,7 @@ internal static class BuiltInModules
     public static IReadOnlyList<IToolboxModule> Create() =>
     [
         new TextModule("system-info", "Systeminformationen", "System", "Übersicht über Windows, Hardware, Laufwerke und Laufzeit.", ["computer", "hardware", "windows", "laufwerke"], false, () => Task.FromResult(SystemInfoService.CreateReport())),
-        new TextModule("network-diagnostics", "Netzwerkdiagnose", "Netzwerk", "IP-Konfiguration, DNS und Erreichbarkeit prüfen.", ["ipconfig", "dns", "ping", "gateway"], false, NetworkDiagnosticsService.RunAsync),
+        new NetworkInputModule("network-diagnostics", "Netzwerkdiagnose", "IP-Konfiguration, DNS und Erreichbarkeit prüfen.", ["ipconfig", "dns", "ping", "gateway"], "Optionaler Zielhost", _ => NetworkDiagnosticsService.RunAsync()),
         new NetworkInputModule("ping", "Ping", "Sendet mehrere ICMP-Anfragen und berechnet Laufzeitstatistiken.", ["icmp", "latenz", "erreichbarkeit"], "Host oder IP-Adresse", host => NetworkToolService.PingAsync(host)),
         new NetworkInputModule("traceroute", "Traceroute", "Ermittelt die Netzwerkstationen bis zum Zielsystem.", ["route", "hops", "ttl", "tracert"], "Host oder IP-Adresse", NetworkToolService.TraceRouteAsync),
         new NetworkInputModule("dns-lookup", "DNS-Lookup", "Löst Hostnamen und IP-Adressen über DNS auf.", ["dns", "hostname", "adresse", "auflösung"], "Hostname oder IP-Adresse", NetworkToolService.DnsLookupAsync),
@@ -20,6 +20,10 @@ internal static class BuiltInModules
         new TextModule("winget-upgrade", "Alle Apps aktualisieren", "Software", "Alle verfügbaren Winget-Pakete aktualisieren.", ["apps", "upgrade", "winget"], true, async () => Format(await WingetService.UpgradeAllAsync())),
         new TextModule("sfc", "Systemdateien prüfen", "Windows-Reparatur", "Windows-Systemdateien mit SFC prüfen und reparieren.", ["sfc", "reparatur", "systemdateien"], true, async () => Format(await CommandRunner.RunAsync("sfc.exe", "/scannow"))),
         new TextModule("dism", "Windows-Abbild prüfen", "Windows-Reparatur", "Windows-Komponentenspeicher mit DISM analysieren.", ["dism", "scanhealth", "reparatur"], true, async () => Format(await CommandRunner.RunAsync("dism.exe", "/Online /Cleanup-Image /ScanHealth"))),
+        new ConfirmedTaskModule("restart-explorer", "Explorer neu starten", "Windows", "Beendet den Windows Explorer und startet ihn anschließend neu.", ["explorer", "shell", "taskleiste", "desktop"], false, "Explorer neu starten", "Offene Explorer-Fenster werden geschlossen. Fortfahren?", FileWindowsToolService.RestartExplorerAsync),
+        new ConfirmedTaskModule("empty-recycle-bin", "Papierkorb leeren", "Dateien", "Leert den Windows-Papierkorb für alle Laufwerke.", ["papierkorb", "recycle", "löschen"], false, "Papierkorb leeren", "Die Dateien im Papierkorb werden dauerhaft gelöscht. Fortfahren?", () => Task.FromResult(FileWindowsToolService.EmptyRecycleBin())),
+        new ConfirmedTaskModule("clean-user-temp", "Temp-Dateien bereinigen", "Dateien", "Löscht nicht verwendete Dateien und Ordner im Benutzer-Temp-Verzeichnis.", ["temp", "cache", "bereinigung", "speicherplatz"], false, "Temp-Dateien bereinigen", "Nicht gesperrte Dateien im Benutzer-Temp-Verzeichnis werden gelöscht. Fortfahren?", FileWindowsToolService.CleanUserTempAsync),
+        new FileHashModule(),
         new ActionModule("temp", "Temp-Ordner öffnen", "Dateien", "Temporären Benutzerordner im Explorer öffnen.", ["temp", "cache", "dateien"], false, () => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", Path.GetTempPath()) { UseShellExecute = true }))
     ];
 
