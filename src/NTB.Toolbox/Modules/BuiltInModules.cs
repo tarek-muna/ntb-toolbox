@@ -13,6 +13,7 @@ internal static class BuiltInModules
         new DocumentationWorkflowModule(),
         new KnowledgeBaseModule(),
         new TicketGeneratorModule(),
+        new ActiveDirectoryModule(),
         new TextModule("system-info", "Systeminformationen", "System", "Übersicht über Windows, Hardware, Laufwerke und Laufzeit.", ["computer", "hardware", "windows", "laufwerke"], false, () => Task.FromResult(SystemInfoService.CreateReport())),
         new TextModule("network-diagnostics", "Netzwerkdiagnose", "Netzwerk", "IP-Konfiguration, DNS und Erreichbarkeit prüfen.", ["ipconfig", "dns", "ping", "gateway"], false, NetworkDiagnosticsService.RunAsync),
         new OsiAnalysisModule(),
