@@ -8,7 +8,7 @@ internal static class BuiltInModules
     public static IReadOnlyList<IToolboxModule> Create() =>
     [
         new TextModule("system-info", "Systeminformationen", "System", "Übersicht über Windows, Hardware, Laufwerke und Laufzeit.", ["computer", "hardware", "windows", "laufwerke"], false, () => Task.FromResult(SystemInfoService.CreateReport())),
-        new NetworkInputModule("network-diagnostics", "Netzwerkdiagnose", "Netzwerk", "IP-Konfiguration, DNS und Erreichbarkeit prüfen.", ["ipconfig", "dns", "ping", "gateway"], "Host oder IP-Adresse", _ => NetworkDiagnosticsService.RunAsync()),
+        new TextModule("network-diagnostics", "Netzwerkdiagnose", "Netzwerk", "IP-Konfiguration, DNS und Erreichbarkeit prüfen.", ["ipconfig", "dns", "ping", "gateway"], false, NetworkDiagnosticsService.RunAsync),
         new OsiAnalysisModule(),
         new QuickAiModule(),
         new NetworkInputModule("ping", "Ping", "Sendet mehrere ICMP-Anfragen und berechnet Laufzeitstatistiken.", ["icmp", "latenz", "erreichbarkeit"], "Host oder IP-Adresse", host => NetworkToolService.PingAsync(host)),
