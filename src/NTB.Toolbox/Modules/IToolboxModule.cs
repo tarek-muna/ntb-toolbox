@@ -6,6 +6,7 @@ internal interface IToolboxModule
     string Title { get; }
     string Category { get; }
     string Description { get; }
+    bool RequiresAdministrator { get; }
     IReadOnlyCollection<string> Keywords { get; }
     Control CreateView();
 }
