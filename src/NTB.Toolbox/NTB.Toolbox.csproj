@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>NTB Toolbox</AssemblyName>
+    <RootNamespace>NTB.Toolbox</RootNamespace>
+    <Version>0.1.0</Version>
+    <Company>Netz, Technik, Büro GbR</Company>
+    <Product>NTB Toolbox</Product>
+  </PropertyGroup>
+</Project>
