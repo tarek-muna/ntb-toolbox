@@ -3,7 +3,7 @@ on:
   push:
   pull_request:
 jobs:
-  build:
+  build-desktop:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -12,3 +12,14 @@ jobs:
           dotnet-version: '8.0.x'
       - run: dotnet restore .\src\NTB.Toolbox\NTB.Toolbox.csproj
       - run: dotnet build .\src\NTB.Toolbox\NTB.Toolbox.csproj -c Release --no-restore
+
+  build-ai-proxy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore ./src/NTB.Toolbox.AiProxy/NTB.Toolbox.AiProxy.csproj
+      - run: dotnet build ./src/NTB.Toolbox.AiProxy/NTB.Toolbox.AiProxy.csproj -c Release --no-restore
+      - run: docker build -t ntb-toolbox-ai-proxy ./src/NTB.Toolbox.AiProxy
