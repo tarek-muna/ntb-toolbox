@@ -1,19 +1,23 @@
 using NTB.Toolbox.Modules;
+using NTB.Toolbox.Services;
 
 namespace NTB.Toolbox;
 
 internal sealed class MainForm : Form
 {
     private readonly ModuleHost _moduleHost = new(BuiltInModules.Create());
+    private readonly AppSettings _settings = AppSettingsStore.Load();
     private readonly FlowLayoutPanel _navigation = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
     private readonly Panel _content = new() { Dock = DockStyle.Fill, BackColor = Color.White };
     private readonly Label _heading = new() { AutoSize = true, Font = new Font("Segoe UI", 18, FontStyle.Bold) };
-    private readonly Label _description = new() { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(720, 0) };
+    private readonly Label _description = new() { AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(650, 0) };
     private readonly TextBox _search = new() { Dock = DockStyle.Top, PlaceholderText = "Werkzeuge durchsuchen …" };
+    private readonly Button _favorite = new() { Width = 44, Height = 34, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Symbol", 14) };
+    private IToolboxModule? _currentModule;
 
     public MainForm()
     {
-        Text = "NTB Toolbox 0.2.0-dev";
+        Text = "NTB Toolbox 0.3.0-dev";
         Width = 1120;
         Height = 720;
         MinimumSize = new Size(900, 580);
@@ -23,8 +27,10 @@ internal sealed class MainForm : Form
 
         BuildShell();
         _search.TextChanged += (_, _) => RefreshNavigation();
+        _favorite.Click += (_, _) => ToggleFavorite();
         RefreshNavigation();
         OpenModule(_moduleHost.All.First());
+        AppLog.Write("NTB Toolbox gestartet.");
     }
 
     private void BuildShell()
@@ -34,13 +40,19 @@ internal sealed class MainForm : Form
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var sidebar = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(28, 42, 59), Padding = new Padding(14) };
-        var sidebarLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1 };
+        var sidebarLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1 };
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         sidebarLayout.Controls.Add(new Label { Text = "NTB Toolbox\nWerkzeuge für Technik & Büro", Dock = DockStyle.Fill, ForeColor = Color.White, Font = new Font("Segoe UI", 12, FontStyle.Bold) }, 0, 0);
         sidebarLayout.Controls.Add(_search, 0, 1);
         sidebarLayout.Controls.Add(_navigation, 0, 2);
+
+        var logButton = new Button { Text = "Protokoll anzeigen", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(39, 57, 78), ForeColor = Color.White };
+        logButton.FlatAppearance.BorderSize = 0;
+        logButton.Click += (_, _) => ShowLog();
+        sidebarLayout.Controls.Add(logButton, 0, 3);
         sidebar.Controls.Add(sidebarLayout);
 
         var main = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Padding = new Padding(22) };
@@ -49,8 +61,13 @@ internal sealed class MainForm : Form
         var header = new Panel { Dock = DockStyle.Fill };
         _heading.Location = new Point(0, 0);
         _description.Location = new Point(2, 42);
+        _favorite.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _favorite.Location = new Point(720, 0);
+        _favorite.FlatAppearance.BorderColor = Color.FromArgb(190, 198, 208);
         header.Controls.Add(_heading);
         header.Controls.Add(_description);
+        header.Controls.Add(_favorite);
+        header.Resize += (_, _) => _favorite.Left = Math.Max(0, header.ClientSize.Width - _favorite.Width);
         main.Controls.Add(header, 0, 0);
         main.Controls.Add(_content, 0, 1);
 
@@ -63,12 +80,20 @@ internal sealed class MainForm : Form
     {
         _navigation.SuspendLayout();
         _navigation.Controls.Clear();
+        var modules = _moduleHost.Search(_search.Text);
+        var ordered = modules
+            .OrderByDescending(module => _settings.FavoriteModuleIds.Contains(module.Id))
+            .ThenBy(module => module.Category)
+            .ThenBy(module => module.Title)
+            .ToList();
+
         string? currentCategory = null;
-        foreach (var module in _moduleHost.Search(_search.Text))
+        foreach (var module in ordered)
         {
-            if (!string.Equals(currentCategory, module.Category, StringComparison.Ordinal))
+            var category = _settings.FavoriteModuleIds.Contains(module.Id) ? "Favoriten" : module.Category;
+            if (!string.Equals(currentCategory, category, StringComparison.Ordinal))
             {
-                currentCategory = module.Category;
+                currentCategory = category;
                 _navigation.Controls.Add(new Label
                 {
                     Text = currentCategory.ToUpperInvariant(),
@@ -83,7 +108,7 @@ internal sealed class MainForm : Form
 
             var button = new Button
             {
-                Text = module.Title,
+                Text = $"{(_settings.FavoriteModuleIds.Contains(module.Id) ? "★ " : string.Empty)}{module.Title}{(module.RequiresAdministrator ? "  [Admin]" : string.Empty)}",
                 Width = 225,
                 Height = 38,
                 FlatStyle = FlatStyle.Flat,
@@ -103,11 +128,48 @@ internal sealed class MainForm : Form
 
     private void OpenModule(IToolboxModule module)
     {
+        _currentModule = module;
         _heading.Text = module.Title;
-        _description.Text = $"{module.Category} · {module.Description}";
+        var adminText = module.RequiresAdministrator ? " · Administratorrechte erforderlich" : string.Empty;
+        _description.Text = $"{module.Category} · {module.Description}{adminText}";
+        _description.ForeColor = module.RequiresAdministrator ? Color.DarkOrange : Color.DimGray;
+        UpdateFavoriteButton();
         _content.Controls.Clear();
         var view = module.CreateView();
         view.Dock = DockStyle.Fill;
         _content.Controls.Add(view);
+        AppLog.Write($"Modul geöffnet: {module.Title}");
+    }
+
+    private void ToggleFavorite()
+    {
+        if (_currentModule is null) return;
+        if (!_settings.FavoriteModuleIds.Add(_currentModule.Id))
+            _settings.FavoriteModuleIds.Remove(_currentModule.Id);
+        AppSettingsStore.Save(_settings);
+        UpdateFavoriteButton();
+        RefreshNavigation();
+    }
+
+    private void UpdateFavoriteButton()
+    {
+        var isFavorite = _currentModule is not null && _settings.FavoriteModuleIds.Contains(_currentModule.Id);
+        _favorite.Text = isFavorite ? "★" : "☆";
+        _favorite.AccessibleName = isFavorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+    }
+
+    private void ShowLog()
+    {
+        using var form = new Form { Text = "NTB Toolbox Protokoll", Width = 850, Height = 520, StartPosition = FormStartPosition.CenterParent };
+        var output = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, Dock = DockStyle.Fill, Font = new Font("Consolas", 9), Text = string.Join(Environment.NewLine, AppLog.Entries) };
+        void Append(string line)
+        {
+            if (!output.IsDisposed && output.IsHandleCreated)
+                output.BeginInvoke(() => output.AppendText((output.TextLength > 0 ? Environment.NewLine : string.Empty) + line));
+        }
+        AppLog.EntryAdded += Append;
+        form.FormClosed += (_, _) => AppLog.EntryAdded -= Append;
+        form.Controls.Add(output);
+        form.ShowDialog(this);
     }
 }
