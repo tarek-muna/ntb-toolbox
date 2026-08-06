@@ -8,6 +8,7 @@ internal static class BuiltInModules
     public static IReadOnlyList<IToolboxModule> Create() =>
     [
         new DashboardModule(),
+        new AiSettingsModule(),
         new FisiHandbookModule(),
         new SummaryModule(),
         new TaskDocumentationModule(),
