@@ -17,7 +17,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "NTB Toolbox 0.4.0-dev";
+        Text = "NTB Toolbox 1.0.1";
         Width = 1120;
         Height = 720;
         MinimumSize = new Size(900, 580);
@@ -28,7 +28,7 @@ internal sealed class MainForm : Form
         _search.TextChanged += (_, _) => RefreshNavigation();
         _favorite.Click += (_, _) => ToggleFavorite();
         RefreshNavigation();
-        OpenModule(_moduleHost.All.First());
+        OpenModule(_moduleHost.All.First(module => module.Id == "dashboard"));
         ApplyTheme();
         AppLog.Write("NTB Toolbox gestartet.");
     }
@@ -135,18 +135,25 @@ internal sealed class MainForm : Form
 
     private void OpenModule(IToolboxModule module)
     {
-        _currentModule = module;
-        _heading.Text = module.Title;
-        var adminText = module.RequiresAdministrator ? " · Administratorrechte erforderlich" : string.Empty;
-        _description.Text = $"{module.Category} · {module.Description}{adminText}";
-        _description.ForeColor = module.RequiresAdministrator ? Color.DarkOrange : (_settings.Theme == AppTheme.Dark ? Color.Silver : Color.DimGray);
-        UpdateFavoriteButton();
-        _content.Controls.Clear();
-        var view = module.CreateView();
-        view.Dock = DockStyle.Fill;
-        _content.Controls.Add(view);
-        ThemeService.Apply(view, _settings.Theme);
-        AppLog.Write($"Modul geöffnet: {module.Title}");
+        try
+        {
+            _currentModule = module;
+            _heading.Text = module.Title;
+            var adminText = module.RequiresAdministrator ? " · Administratorrechte erforderlich" : string.Empty;
+            _description.Text = $"{module.Category} · {module.Description}{adminText}";
+            _description.ForeColor = module.RequiresAdministrator ? Color.DarkOrange : (_settings.Theme == AppTheme.Dark ? Color.Silver : Color.DimGray);
+            UpdateFavoriteButton();
+            _content.Controls.Clear();
+            var view = module.CreateView();
+            view.Dock = DockStyle.Fill;
+            _content.Controls.Add(view);
+            ThemeService.Apply(view, _settings.Theme);
+            AppLog.Write($"Modul geöffnet: {module.Title}");
+        }
+        catch (Exception ex)
+        {
+            AppErrorHandler.Handle(ex, $"Modul {module.Title}");
+        }
     }
 
     private void ToggleFavorite()
@@ -208,14 +215,21 @@ internal sealed class MainForm : Form
 
     private void ExportLog()
     {
-        using var dialog = new SaveFileDialog
+        try
         {
-            Title = "Protokoll exportieren",
-            Filter = "Textdatei (*.txt)|*.txt|Alle Dateien (*.*)|*.*",
-            FileName = $"ntb-toolbox-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt"
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        File.WriteAllLines(dialog.FileName, AppLog.Entries);
-        AppLog.Write($"Protokoll exportiert: {dialog.FileName}");
+            using var dialog = new SaveFileDialog
+            {
+                Title = "Protokoll exportieren",
+                Filter = "Textdatei (*.txt)|*.txt|Alle Dateien (*.*)|*.*",
+                FileName = $"ntb-toolbox-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt"
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            File.WriteAllLines(dialog.FileName, AppLog.Entries);
+            AppLog.Write($"Protokoll exportiert: {dialog.FileName}");
+        }
+        catch (Exception ex)
+        {
+            AppErrorHandler.Handle(ex, "Protokollexport");
+        }
     }
 }

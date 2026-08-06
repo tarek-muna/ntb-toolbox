@@ -7,6 +7,7 @@ internal static class BuiltInModules
 {
     public static IReadOnlyList<IToolboxModule> Create() =>
     [
+        new DashboardModule(),
         new FisiHandbookModule(),
         new SummaryModule(),
         new TaskDocumentationModule(),
@@ -64,29 +65,38 @@ internal sealed class TextModule : IToolboxModule
     public Control CreateView()
     {
         var output = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, Dock = DockStyle.Fill, Font = new Font("Consolas", 10), Text = Description };
+        var status = new Label { Text = "Bereit", Dock = DockStyle.Top, Height = 24, Padding = new Padding(4, 4, 0, 0) };
+        var progress = new ProgressBar { Dock = DockStyle.Top, Height = 6, Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 25, Visible = false };
         var run = new Button { Text = "Ausführen", Dock = DockStyle.Top, Height = 38 };
         run.Click += async (_, _) =>
         {
             run.Enabled = false;
-            output.Text = "Wird ausgeführt …";
+            progress.Visible = true;
+            status.Text = "Wird ausgeführt …";
+            output.Text = "Bitte warten …";
             AppLog.Write($"{Title} gestartet.");
             try
             {
                 output.Text = await _run();
+                status.Text = "Erfolgreich abgeschlossen";
                 AppLog.Write($"{Title} abgeschlossen.");
             }
             catch (Exception ex)
             {
                 output.Text = "Fehler: " + ex.Message;
-                AppLog.Write($"{Title} fehlgeschlagen: {ex.Message}");
+                status.Text = "Fehlgeschlagen";
+                AppErrorHandler.Handle(ex, Title);
             }
             finally
             {
+                progress.Visible = false;
                 run.Enabled = true;
             }
         };
         var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
         panel.Controls.Add(output);
+        panel.Controls.Add(status);
+        panel.Controls.Add(progress);
         panel.Controls.Add(run);
         return panel;
     }
@@ -119,8 +129,15 @@ internal sealed class ActionModule : IToolboxModule
         var button = new Button { Text = Title, AutoSize = true, Height = 38 };
         button.Click += (_, _) =>
         {
-            AppLog.Write($"{Title} geöffnet.");
-            _action();
+            try
+            {
+                AppLog.Write($"{Title} geöffnet.");
+                _action();
+            }
+            catch (Exception ex)
+            {
+                AppErrorHandler.Handle(ex, Title);
+            }
         };
         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), FlowDirection = FlowDirection.TopDown };
         panel.Controls.Add(new Label { Text = Description, AutoSize = true, MaximumSize = new Size(650, 0) });
