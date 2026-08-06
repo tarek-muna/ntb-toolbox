@@ -1,0 +1,69 @@
+name: Release NTB Toolbox
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag, for example v1.0.0'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release-desktop:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish Windows application
+        shell: pwsh
+        run: |
+          dotnet restore .\src\NTB.Toolbox\NTB.Toolbox.csproj -r win-x64
+          dotnet publish .\src\NTB.Toolbox\NTB.Toolbox.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --no-restore `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o .\artifacts\publish
+
+      - name: Package and checksum
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $zip = "NTB-Toolbox-$version-win-x64.zip"
+          Compress-Archive -Path .\artifacts\publish\* -DestinationPath ".\artifacts\$zip" -Force
+          $hash = (Get-FileHash ".\artifacts\$zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $zip" | Set-Content ".\artifacts\$zip.sha256" -Encoding ascii
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntb-toolbox-${{ env.RELEASE_TAG }}-win-x64
+          path: |
+            artifacts/*.zip
+            artifacts/*.sha256
+          if-no-files-found: error
+
+      - name: Attach files to GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG .\artifacts\*.zip .\artifacts\*.sha256 --clobber
